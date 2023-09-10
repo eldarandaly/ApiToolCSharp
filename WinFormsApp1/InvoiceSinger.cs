@@ -16,8 +16,11 @@ namespace WinFormsApp1
 {
     public partial class InvoiceSinger : Form
     {
-
-
+        private class TokenInfo
+        {
+            public required string Token { get; set; }
+            public DateTime ExpirationTime { get; set; }
+        }
         private readonly string DllLibPath = "eps2003csp11.dll";
         private HttpListener listener;
         private Thread listenerThread;
@@ -25,6 +28,11 @@ namespace WinFormsApp1
         private bool disconnectButtonClicked = false;
         private bool flag = true;
         string connectionString = "Data Source=C:\\Users\\ahmed.mamdouh\\source\\repos\\WinFormsApp1\\WinFormsApp1\\userTaxDB.db;Version=3;Legacy Format=True;";
+        private string newaccess_token;
+        private List<DataGridViewRow> selectedUserRowOfTaxCreds = new List<DataGridViewRow>();
+        private string url = "http://localhost:5253/";
+        private string PreProdApi = "https://id.preprod.eta.gov.eg/connect/token";
+        private Dictionary<string, TokenInfo> tokenDictionary = new Dictionary<string, TokenInfo>();
 
         public InvoiceSinger()
         {
@@ -38,13 +46,12 @@ namespace WinFormsApp1
         }
         private void Connectbtn_Click(object sender, EventArgs e)
         {
-            string url = "http://localhost:5253/";
+
             listener = new HttpListener();
             listener.Prefixes.Add(url);
 
             listenerThread = new Thread(ListenForRequests);
             listenerThread.Start();
-
         }
         /* first add the user client id and secret 
          * then connect yo preprod api 
@@ -57,52 +64,67 @@ namespace WinFormsApp1
          *
          *
          */
-        private void ListenForRequests()
+        private void UpdateLabel4Text(string newText)
         {
-            //string url = "http://localhost:5253/";
-            //listener = new HttpListener();
-            //listener.Prefixes.Add(url);
-
+            if (label4.InvokeRequired)
+            {
+                label4.Invoke(new Action(() => label4.Text = newText));
+            }
+            else
+            {
+                label4.Text = newText;
+            }
+        }
+        private async void ListenForRequests()
+        {
             try
             {
                 listener.Start();
                 String cades = "";
                 String value = "";
-                String TokenPIN = TokenPinBox.Text;
-                String TokenCertificate = TokenCertificateBox.Text;
+                //String TokenPIN = TokenPinBox.Text;
+                //String TokenCertificate = TokenCertificateBox.Text;
 
 
 
-                if (TokenCertificate.Length == 0 && TokenPIN.Length == 0)
+                //if (TokenCertificate.Length == 0 && TokenPIN.Length == 0)
+                //{
+                //    label4.Text = "Please Insert The Pin And Certificate";
+                //    MessageBox.Show(label4.Text);
+
+                //}
+                //else if (TokenPIN.Length == 0)
+                //{
+
+                //    label4.Text = " Please Type The Pin";
+                //    MessageBox.Show(label4.Text);
+
+
+                //}
+                //else if (TokenCertificate.Length == 0)
+                //{
+                //    label4.Text = "Please Type The Token Certificate";
+                //    MessageBox.Show(label4.Text);
+                //}
+                if (selectedUserRowOfTaxCreds.Count == 0)
                 {
-                    label4.Text = "Please Insert The Pin And Certificate";
-                    MessageBox.Show(label4.Text);
-
-                }
-                else if (TokenPIN.Length == 0)
-                {
-
-                    label4.Text = " Please Type The Pin";
-                    MessageBox.Show(label4.Text);
-
-
-                }
-                else if (TokenCertificate.Length == 0)
-                {
-                    label4.Text = "Please Type The Token Certificate";
-                    MessageBox.Show(label4.Text);
+                    MessageBox.Show("Please Select A user To Login to the Tax Portal");
                 }
                 else
                 {
-                    string checkValue = SignWithCMS(TokenPIN, TokenCertificate, value);
+                    //string checkValue = SignWithCMS(TokenPIN, TokenCertificate, value);
+                    string checkValue = "found";
+                    Console.WriteLine("hello worldss");
                     if (checkValue == "no device detected" || checkValue == "No slots found" || checkValue == "Certificate not found")
                     {
 
                         MessageBox.Show(checkValue);
-                        label4.Text = checkValue;
+                        //label4.Text = checkValue;
                     }
                     else
                     {
+
+                        UpdateLabel4Text("Open Conn" + url);
                         while (!disconnectButtonClicked)
                         {
 
@@ -116,7 +138,14 @@ namespace WinFormsApp1
 
                                 try
                                 {
+                                    var acknowledgment = new { Message = "JSON data received successfully" };
+                                    string acknowledgmentJson = JsonConvert.SerializeObject(acknowledgment);
+                                    //using (StreamWriter acknowledgmentWriter = new StreamWriter(response.OutputStream, Encoding.UTF8))
+                                    //{
+                                    //    acknowledgmentWriter.Write(acknowledgmentJson);
+                                    //}
                                     // Read and process the incoming JSON data
+
                                     using (StreamReader reader = new StreamReader(request.InputStream))
                                     {
                                         string json = reader.ReadToEnd();
@@ -128,54 +157,71 @@ namespace WinFormsApp1
                                             DateParseHandling = DateParseHandling.None
                                         });
                                         String canonicalString = Serialize(invoiceJson);
+                                        String dd = "";
 
-                                        if (invoiceJson["documentTypeVersion"].Value<string>() == "0.9")
+                                        var rowResults = new List<string>();
+
+                                        foreach (DataGridViewRow row in selectedUserRowOfTaxCreds)
                                         {
-                                            cades = "ANY";
+                                            string Client_id = row.Cells["Client_ID"].Value?.ToString() ?? string.Empty;
+                                            string Client_Secret_1 = row.Cells["Client_Secret_1"].Value?.ToString() ?? string.Empty;
+                                            string Token_Pin = row.Cells["Token_Pin"].Value?.ToString() ?? string.Empty;
+                                            string Token_Cert = row.Cells["Token_Cert"].Value?.ToString() ?? string.Empty;
 
-                                        }
-                                        else
-                                        {
-                                            cades = SignWithCMS(TokenPIN, TokenCertificate, canonicalString);
-                                        }
-                                        if (cades == "No slots found")
-                                        {
-                                            label4.Text = cades;
-                                            MessageBox.Show(cades);
 
-                                            break;
-                                        }
-                                        else if (cades == "Certificate not found")
-                                        {
-                                            label4.Text = cades;
-                                            MessageBox.Show(cades);
+                                            if (invoiceJson["documentTypeVersion"].Value<string>() == "0.9")
+                                            {
+                                                cades = "ANY";
+                                            }
+                                            else
+                                            {
+                                                cades = SignWithCMS(Token_Pin, Token_Cert, canonicalString);
+                                            }
 
-                                            break;
-                                        }
-                                        else if (cades == "no device detected")
-                                        {
-                                            label4.Text = cades;
-                                            MessageBox.Show(cades);
+                                            JObject signaturesObject = new JObject(
+                                                new JProperty("signatureType", "I"),
+                                                new JProperty("value", cades));
 
-                                            break;
-                                        }
+                                            JArray signaturesArray = new JArray();
+                                            signaturesArray.Add(signaturesObject);
+                                            invoiceJson.Add("signatures", signaturesArray);
+                                            String fullSignedDocument = "{\"documents\":[" + invoiceJson.ToString() + "]}";
 
-                                        JObject signaturesObject = new JObject(
-                                            new JProperty("signatureType", "I"),
-                                            new JProperty("value", cades));
+                                            try
+                                            {
+                                                string access_token = await GetOrRefreshAccessToken(Client_id, Client_Secret_1);
+                                                if (!string.IsNullOrEmpty(access_token))
+                                                {
+                                                    string result = await SubmitDocToTax(fullSignedDocument, access_token);
+                                                    rowResults.Add(result);
+                                                }
+                                                else
+                                                {
+                                                    MessageBox.Show("Access token retrieval or refresh failed.");
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                MessageBox.Show(ex.ToString());
+                                            }
 
-                                        JArray signaturesArray = new JArray();
-                                        signaturesArray.Add(signaturesObject);
-                                        invoiceJson.Add("signatures", signaturesArray);
-                                        String fullSignedDocument = "{\"documents\":[" + invoiceJson.ToString() + "]}";
 
-                                        // Sign the JSON data with CMS
-                                        // Send the signed JSON as the response
-                                        using (StreamWriter writer = new StreamWriter(response.OutputStream, Encoding.UTF8))
-                                        {
-                                            writer.Write(fullSignedDocument);
+                                            // Combine the results for all rows into a single response
+                                            string combinedResponse = string.Join(Environment.NewLine, rowResults);
+
+                                            using (StreamWriter writer = new StreamWriter(response.OutputStream, Encoding.UTF8))
+                                            {
+                                                writer.Write(combinedResponse);
+                                            }
+
+
+                                            //using (StreamWriter writer = new StreamWriter(response.OutputStream, Encoding.UTF8))
+                                            //{
+                                            //    writer.Write(fullSignedDocument);
+                                            //}
                                         }
                                     }
+
                                 }
                                 catch (Exception ex)
                                 {
@@ -287,6 +333,7 @@ namespace WinFormsApp1
 
             return serialized;
         }
+
 
         private string SignWithCMS(string TokenPin, string TokenCertificate, string serializedJson)
         {
@@ -441,15 +488,6 @@ namespace WinFormsApp1
 
             adapter.Fill(dataTable);
             dataGridView1.DataSource = dataTable;
-            // Add columns to the DataTable
-            //dataTable.Columns.Add("Column1", typeof(string));
-            //dataTable.Columns.Add("Column2", typeof(string));
-            //// Add columns to the DataTable
-            //dataTable.Columns.Add("Column3", typeof(string));
-            //dataTable.Columns.Add("Column4", typeof(string));
-            //// Add columns to the DataTable
-            //dataTable.Columns.Add("Column5", typeof(string));
-            //dataTable.Columns.Add("Column6", typeof(string));
             connection.Close();
 
         }
@@ -521,182 +559,243 @@ namespace WinFormsApp1
                 MessageBox.Show("Please select a row to delete.");
             }
         }
-        //private void InsertDataIntoDatabaseButton_Click(object sender, EventArgs e)
-        //{
-        //    using (SQLiteConnection connection = new SQLiteConnection(connectionString))
-        //    {
-        //        connection.Open();
-        //        DataRow newRow = dataTable.NewRow();
-
-        //        // Check if any row is selected in the DataGridView
-        //        if (dataGridView1.SelectedRows.Count > 0)
-        //        {
-        //            // Get the selected row
-        //            DataGridViewRow selectedRow = dataGridView1.SelectedRows[0];
-
-        //            // Populate the DataRow with values from the selected DataGridView row
-        //            newRow[0] = selectedRow.Cells[0].Value?.ToString() ?? string.Empty;
-        //            newRow[1] = selectedRow.Cells[1].Value?.ToString() ?? string.Empty;
-        //            newRow[2] = selectedRow.Cells[2].Value?.ToString() ?? string.Empty;
-        //            newRow[3] = selectedRow.Cells[3].Value?.ToString() ?? string.Empty;
-        //            newRow[4] = selectedRow.Cells[4].Value?.ToString() ?? string.Empty;
-        //            newRow[5] = selectedRow.Cells[5].Value?.ToString() ?? string.Empty;
-        //            // Add the new row to the DataTable
-        //            dataTable.Rows.Add(newRow);
-        //            foreach (DataRow row in dataTable.Rows)
-        //            {
-        //                // Retrieve data from the DataTable
-        //                string Email = row[0].ToString();
-        //                string Api_Type = row[1].ToString();
-        //                string Client_Id = row[2].ToString();
-        //                string Client_Serect_1 = row[3].ToString();
-        //                string Client_Serect_2 = row[4].ToString();
-        //                string Scope = row[5].ToString();
-
-        //                // Insert the data into the SQLite database
-        //                string insertQuery = "INSERT INTO Users " +
-        //                    "(Email, Api_Type, Client_ID, Client_Secret_1, Client_Secret_2, Scope) " +
-        //                    "VALUES (@Email, @Api_Type,@Client_Id,@Client_Serect_1,@Client_Serect_2,@Scope)";
-
-        //                using (SQLiteCommand cmd = new SQLiteCommand(insertQuery, connection))
-        //                {
-        //                    cmd.Parameters.AddWithValue("@Email", Email);
-        //                    cmd.Parameters.AddWithValue("@Api_Type", Api_Type);
-        //                    cmd.Parameters.AddWithValue("@Client_Id", Client_Id);
-        //                    cmd.Parameters.AddWithValue("@Client_Serect_1", Client_Serect_1);
-        //                    cmd.Parameters.AddWithValue("@Client_Serect_2", Client_Serect_2);
-        //                    cmd.Parameters.AddWithValue("@Scope", Scope);
-        //                    cmd.ExecuteNonQuery();
-        //                }
-        //            }
-        //            connection.Close();
-        //            MessageBox.Show("Saved");
-
-        //        }
-
-        //        else
-        //        {
-        //            MessageBox.Show("Please select a row with data to add.");
-        //        }
-
-
-        //    }
-        //    //refresh the DataGridView or clear it after inserting data
-        //    dataGridView1.Refresh();
-        //}
         private void InsertDataIntoDatabaseButton_Click(object sender, EventArgs e)
         {
             using (SQLiteConnection connection = new SQLiteConnection(connectionString))
             {
                 connection.Open();
-                //DataRow newRow = dataTable.NewRow();
 
-                // Check if any row is selected in the DataGridView
-                if (dataGridView1.SelectedRows.Count > 0)
+                foreach (DataRow row in dataTable.Rows)
                 {
+                    // Retrieve data from the DataTable
+                    string Email = row["Email"].ToString();
+                    string Api_Type = row["Api_Type"].ToString();
+                    string Client_Id = row["Client_ID"].ToString();
+                    string Client_Serect_1 = row["Client_Secret_1"].ToString();
+                    string Client_Serect_2 = row["Client_Secret_2"].ToString();
+                    string Scope = row["Scope"].ToString();
+                    string Token_Pin = row["Token_Pin"].ToString();
+                    string Token_Cert = row["Token_Cert"].ToString();
 
-                    // Get the selected row
-                    //DataGridViewRow selectedRow = dataGridView1.SelectedRows[0];
-
-                    // Populate the DataRow with values from the selected DataGridView row
-                    //newRow["Email"]             = selectedRow.Cells["Email"].Value?.ToString() ?? string.Empty;
-                    //newRow["Api_Type"]          = selectedRow.Cells["Api_Type"].Value?.ToString() ?? string.Empty;
-                   // newRow["Client_ID"]         = selectedRow.Cells["Client_ID"].Value?.ToString() ?? string.Empty;
-                   // newRow["Client_Secret_1"]   = selectedRow.Cells["Client_Secret_1"].Value?.ToString() ?? string.Empty;
-                   // newRow["Client_Secret_2"]   = selectedRow.Cells["Client_Secret_2"].Value?.ToString() ?? string.Empty;
-                   // newRow["Scope"]             = selectedRow.Cells["Scope"].Value?.ToString() ?? string.Empty;
-
-                    // Add the new row to the DataTable
-                   // dataTable.Rows.Add(newRow);
-
-                    foreach (DataRow row in dataTable.Rows)
+                    // Check if the record already exists in the database
+                    string selectQuery = "SELECT COUNT(*) FROM Users WHERE Client_ID = @Client_ID AND Client_Secret_1 = @Client_Secret_1";
+                    using (SQLiteCommand selectCmd = new SQLiteCommand(selectQuery, connection))
                     {
-                        
-                        // Retrieve data from the DataTable
-                        string Email            = row["Email"].ToString();
-                        string Api_Type         = row["Api_Type"].ToString();
-                        string Client_Id        = row["Client_ID"].ToString();
-                        string Client_Serect_1  = row["Client_Secret_1"].ToString();
-                        string Client_Serect_2  = row["Client_Secret_2"].ToString();
-                        string Scope            = row["Scope"].ToString();
+                        selectCmd.Parameters.AddWithValue("@Client_ID", Client_Id);
+                        selectCmd.Parameters.AddWithValue("@Client_Secret_1", Client_Serect_1);
 
-                        // Insert the data into the SQLite database
-                        string insertQuery = "INSERT INTO Users " +
-                            "(Email, Api_Type, Client_ID, Client_Secret_1, Client_Secret_2, Scope) " +
-                            "VALUES (@Email, @Api_Type, @Client_Id, @Client_Serect_1, @Client_Serect_2, @Scope)";
+                        int count = Convert.ToInt32(selectCmd.ExecuteScalar());
 
-                        try
+                        if (count > 0)
                         {
-                            using (SQLiteCommand cmd = new SQLiteCommand(insertQuery, connection))
-                            {
-                                cmd.Parameters.AddWithValue("@Email", Email);
-                                cmd.Parameters.AddWithValue("@Api_Type", Api_Type);
-                                cmd.Parameters.AddWithValue("@Client_Id", Client_Id);
-                                cmd.Parameters.AddWithValue("@Client_Serect_1", Client_Serect_1);
-                                cmd.Parameters.AddWithValue("@Client_Serect_2", Client_Serect_2);
-                                cmd.Parameters.AddWithValue("@Scope", Scope);
-                                cmd.ExecuteNonQuery();
-                            }
-                        }
-                        catch (SQLiteException ex)
-                        {
-                            if ((SQLiteErrorCode)ex.ErrorCode == SQLiteErrorCode.Constraint)
-                            {
-                                MessageBox.Show("A unique constraint violation occurred. The data may already exist in the database.");
-                                // Optionally, log the error for debugging purposes
-                                Console.WriteLine("SQLite Error: " + ex.Message);
-                            }
-                            else
-                            {
-                                // Handle other SQLite exceptions or general exceptions as needed
-                                MessageBox.Show("An error occurred while inserting data into the database.");
-                                // Optionally, log the error for debugging purposes
-                                Console.WriteLine("SQLite Error: " + ex.Message);
-                            }
+                            // Record already exists, skip this insert
+                            continue;
                         }
                     }
-                    connection.Close();
-                    MessageBox.Show("Saved");
+
+                    // Insert the data into the SQLite database
+                    string insertQuery = "INSERT INTO Users " +
+                        "(Email, Api_Type, Client_ID, Client_Secret_1, Client_Secret_2, Scope, Token_Pin, Token_Cert) " +
+                        "VALUES (@Email, @Api_Type, @Client_Id, @Client_Serect_1, @Client_Serect_2, @Scope, @Token_Pin, @Token_Cert)";
+
+                    try
+                    {
+                        using (SQLiteCommand cmd = new SQLiteCommand(insertQuery, connection))
+                        {
+                            cmd.Parameters.AddWithValue("@Email", Email);
+                            cmd.Parameters.AddWithValue("@Api_Type", Api_Type);
+                            cmd.Parameters.AddWithValue("@Client_Id", Client_Id);
+                            cmd.Parameters.AddWithValue("@Client_Serect_1", Client_Serect_1);
+                            cmd.Parameters.AddWithValue("@Client_Serect_2", Client_Serect_2);
+                            cmd.Parameters.AddWithValue("@Scope", Scope);
+                            cmd.Parameters.AddWithValue("@Token_Pin", Token_Pin);
+                            cmd.Parameters.AddWithValue("@Token_Cert", Token_Cert);
+
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch (SQLiteException ex)
+                    {
+                        // Handle other SQLite exceptions or general exceptions as needed
+                        MessageBox.Show("An error occurred while inserting data into the database.");
+                        // Optionally, log the error for debugging purposes
+                        Console.WriteLine("SQLite Error: " + ex.Message);
+                    }
                 }
-            
-        else
-            {
-                MessageBox.Show("Please select a row with data to add.");
+
+                connection.Close();
+                MessageBox.Show("Saved");
             }
+
+            // Optionally, refresh the DataGridView or clear it after inserting data
+            dataGridView1.Refresh();
         }
 
-        // Optionally, refresh the DataGridView or clear it after inserting data
-        dataGridView1.Refresh();
-}
 
-
-
-    private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        private async Task<string> LoginToTaxAPI(string client_id, string client_secret)
         {
-            if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && dataGridView1.Columns[e.ColumnIndex] is DataGridViewButtonColumn)
+            using HttpClient client = new HttpClient();
+
+            // Define the request URL
+            string requestUrl = PreProdApi;
+            var request = new HttpRequestMessage(HttpMethod.Post, PreProdApi);
+
+            // Define the request headers
+            request.Headers.Add("HeaderName", "HeaderValue");
+            request.Headers.Add("Cookie", "3f6bf69972563c3e0e619b78edf73035=f7d2dd5410a2a5f86b2a37a8085c3717; TS01af3122=01bb6af84e15c943bf8bb44e8d2309b6a9e92b7c8db37ff37f470c5bc8a288a088c631598021491e4e12db7bdedb45f22a43b8c39d396d5be71eb0b0cba9155b2f405f033d");
+            // Define the request content parameters
+            var collection = new List<KeyValuePair<string, string>>();
+
+            // Create the request content with string interpolation
+
+            // Create the HTTP request message
+            collection.Add(new("grant_type", "client_credentials"));
+            collection.Add(new("client_id", client_id));
+            collection.Add(new("client_secret", client_secret));
+            collection.Add(new("scope", "InvoicingAPI"));
+
+            var content = new FormUrlEncodedContent(collection);
+            request.Content = content;
+
+            // Send the HTTP request asynchronously
+            var response = await client.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            // Read and parse the response body
+            string responseBody = await response.Content.ReadAsStringAsync();
+            JObject responseObject = JObject.Parse(responseBody);
+
+            // Extract the access token and expiration time from the response
+            string access_token = responseObject["access_token"].ToString();
+            int expiresIn = responseObject["expires_in"].Value<int>(); // Expiration time in seconds
+
+            // Calculate the token expiration time
+            DateTime expirationTime = DateTime.Now.AddSeconds(expiresIn);
+
+            // Store the token and its expiration time for the account
+            // You can use a data structure to associate tokens with accounts
+            // For simplicity, I'm using a dictionary here (you can choose a more suitable data structure)
+            if (!tokenDictionary.ContainsKey(client_id))
             {
-                // Get the selected row
-                DataGridViewRow selectedRow = dataGridView1.Rows[e.RowIndex];
+                tokenDictionary[client_id] = new TokenInfo
+                {
+                    Token = access_token,
+                    ExpirationTime = expirationTime
+                };
+            }
+            else
+            {
+                // If the token already exists, update its value and expiration time
+                tokenDictionary[client_id].Token = access_token;
+                tokenDictionary[client_id].ExpirationTime = expirationTime;
+            }
 
-                // Access data from other cells in the same row
-                string Email = selectedRow.Cells["Email"].Value?.ToString() ?? string.Empty;
-                string Api_Type = selectedRow.Cells["Api_Type"].Value?.ToString() ?? string.Empty;
-                string Client_ID = selectedRow.Cells["Client_ID"].Value?.ToString() ?? string.Empty;
+            return access_token;
+        }
 
-                string Client_Secret_1 = selectedRow.Cells["Client_Secret_1"].Value?.ToString() ?? string.Empty;
+        private async Task<string> GetOrRefreshAccessToken(string client_id, string client_secret)
+        {
+            // Check if the token exists and is still valid
+            if (tokenDictionary.ContainsKey(client_id) &&
+                tokenDictionary[client_id].ExpirationTime > DateTime.Now)
+            {
+                // Return the existing token
+                return tokenDictionary[client_id].Token;
+            }
+            else
+            {
+                // Request a new access token
+                string newToken = await LoginToTaxAPI(client_id, client_secret);
 
-                string Client_Secret_2 = selectedRow.Cells["Client_Secret_2"].Value?.ToString() ?? string.Empty;
+                // Store the new token in the dictionary
+                tokenDictionary[client_id] = new TokenInfo
+                {
+                    Token = newToken,
+                    ExpirationTime = DateTime.Now.AddSeconds(3600) // Set the expiration time (3600 seconds = 1 hour)
+                };
 
-                string Scope = selectedRow.Cells["Scope"].Value?.ToString() ?? string.Empty;
-
-                // Access more columns as needed
-
-                // Display the data in a MessageBox
-                string message = $"Cell1: {Email}\nCell2: {Api_Type}\n"; // Customize this as needed
-                MessageBox.Show(message, "Row Data");
+                return newToken;
             }
         }
 
+
+
+        private async Task<string> SubmitDocToTax(string fullSignedDoc, string access_token)
+        {
+            try
+            {
+                // URL for the API endpoint
+                string subUrl = "https://api.preprod.invoicing.eta.gov.eg/api/v1/documentsubmissions";
+
+                // Create an HttpClient instance
+                var client = new HttpClient();
+
+                // Create an HTTP request message with the POST method and URL
+                var request = new HttpRequestMessage(HttpMethod.Post, subUrl);
+
+                // Add the authorization token to the request headers
+                string authHeader = "Bearer " + access_token;
+                request.Headers.Add("Authorization", authHeader);
+
+                // Create the request content with the JSON payload
+                var content = new StringContent(fullSignedDoc, Encoding.UTF8, "application/json");
+                request.Content = content;
+
+                // Send the HTTP request asynchronously
+                var response = await client.SendAsync(request);
+
+                // Ensure that the response has a successful status code (e.g., 200 OK)
+                response.EnsureSuccessStatusCode();
+
+                // Read and return the response content as a string
+                string responseContent = await response.Content.ReadAsStringAsync();
+                return responseContent;
+            }
+            catch (Exception ex)
+            {
+                // Handle and log any exceptions that may occur during the request
+                Console.WriteLine("Error: " + ex.ToString());
+                // Return an error message or throw an exception if desired
+                throw ex;
+            }
+        }
+
+        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex == dataGridView1.Columns["RadioColumn"].Index)
+            {
+                DataGridViewRow clickedRow = dataGridView1.Rows[e.RowIndex];
+
+                // Check if the clicked row is already in the list of selected rows
+                if (selectedUserRowOfTaxCreds.Contains(clickedRow))
+                {
+                    // If it is, uncheck the checkbox (simulated radio button) and remove it from the list
+                    DataGridViewCheckBoxCell cell = clickedRow.Cells["RadioColumn"] as DataGridViewCheckBoxCell;
+                    cell.Value = false;
+                    selectedUserRowOfTaxCreds.Remove(clickedRow);
+                }
+                else
+                {
+                    // If it's not in the list, check the checkbox and add it to the list
+                    DataGridViewCheckBoxCell cell = clickedRow.Cells["RadioColumn"] as DataGridViewCheckBoxCell;
+                    cell.Value = true;
+                    selectedUserRowOfTaxCreds.Add(clickedRow);
+                }
+            }
+        }
+
+        private static void GetSelectedRowData(DataGridViewRow selectedRow)
+        {
+            string Email = selectedRow.Cells["Email"].Value?.ToString() ?? string.Empty;
+            string Api_Type = selectedRow.Cells["Api_Type"].Value?.ToString() ?? string.Empty;
+            string Client_ID = selectedRow.Cells["Client_ID"].Value?.ToString() ?? string.Empty;
+            string Client_Secret_1 = selectedRow.Cells["Client_Secret_1"].Value?.ToString() ?? string.Empty;
+            string Client_Secret_2 = selectedRow.Cells["Client_Secret_2"].Value?.ToString() ?? string.Empty;
+            string Scope = selectedRow.Cells["Scope"].Value?.ToString() ?? string.Empty;
+            string Token_Pin = selectedRow.Cells["Token_Pin"].Value?.ToString() ?? string.Empty;
+            string Token_Cert = selectedRow.Cells["Token_Cert"].Value?.ToString() ?? string.Empty;
+            MessageBox.Show(Email);
+        }
     }
 }
 

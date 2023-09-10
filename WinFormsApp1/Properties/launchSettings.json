@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "InvoiceSignerApi": {
+      "commandName": "Project",
+      "hotReloadEnabled": false,
+      "nativeDebugging": true
+    }
+  }
+}
